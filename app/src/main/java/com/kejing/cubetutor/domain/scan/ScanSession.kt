@@ -1,5 +1,6 @@
 package com.kejing.cubetutor.domain.scan
 
+import com.kejing.cubetutor.domain.Cube
 import com.kejing.cubetutor.domain.CubeColor
 
 /** One face as read: URFDLB face index, nine colours row by row, their Lab (null when painted by hand) and confidence. */
@@ -9,7 +10,7 @@ data class FaceRead(val face: Int, val colors: List<CubeColor>, val labs: List<L
 }
 
 /** Why a stable face was not taken, or taken with a note (design readFlow.guards). */
-enum class Guard { REPEAT, REVERSED }
+enum class Guard { REPEAT, REVERSED, WRONG_SIDE }
 
 /**
  * Stability (design readFlow.confirm; reference ScanManager: same 9 patch values for 1 s at 200 ms samples, then a
@@ -32,17 +33,24 @@ class Stabilizer {
     }
 
     /** Progress 0..1 towards confirmation after this frame, or −1 when nothing is being tracked. */
-    fun feed(now: Long, c: List<CubeColor>?, l: List<Lab>?): Float {
+    private var x0 = 0f
+    private var y0 = 0f
+
+    /** [x], [y], [pitch]: where the face's centre is (a face that moves more than [MAX_MOVE] pitches starts over). */
+    fun feed(now: Long, c: List<CubeColor>?, l: List<Lab>?, x: Float = 0f, y: Float = 0f, pitch: Float = 1f): Float {
         if (c == null || l == null) {
             if (colors != null && ++misses <= 1) return progress(now)
             reset()
             return -1f
         }
         misses = 0
-        if (c != colors) {
+        val moved = colors != null && (x - x0) * (x - x0) + (y - y0) * (y - y0) > (MAX_MOVE * pitch) * (MAX_MOVE * pitch)
+        if (c != colors || moved) {
             reset()
             colors = c
             since = now
+            x0 = x
+            y0 = y
         }
         frames++
         labs += l
@@ -57,8 +65,10 @@ class Stabilizer {
     fun meanLabs(): List<Lab> = (0 until 9).map { k -> Lab.mean(labs.map { it[k] }) }
 
     companion object {
-        const val STABLE_MS = 600L
-        const val MIN_FRAMES = 3
+        /** User 2026-11-17: 0.6 s took faces while still turning; held still for 0.9 s, square-on, not moving. */
+        const val STABLE_MS = 900L
+        const val MIN_FRAMES = 4
+        const val MAX_MOVE = 0.35f
     }
 }
 
@@ -133,6 +143,19 @@ class ScanSession(private val readFaces: IntArray, val only: Int? = null, val mo
         stab.reset()
     }
 
+    /** 重扫这一面 at the per-face confirm: the face is unread again and asked for next. */
+    fun forget(face: Int, now: Long) {
+        reads.remove(face)
+        wanted = face
+        advance(now)
+    }
+
+    /** The user confirmed (and maybe fixed) a face: keep their colours, learn the colours from all nine squares. */
+    fun confirmed(read: FaceRead) {
+        reads[read.face] = read
+        read.labs?.let { model.learn(read.colors, it) }
+    }
+
     /** A face was painted by hand (S04): counts as read. */
     fun painted(face: Int, colors: List<CubeColor>, now: Long) {
         reads[face] = FaceRead(face, colors, null, List(9) { 1f })
@@ -143,27 +166,64 @@ class ScanSession(private val readFaces: IntArray, val only: Int? = null, val mo
         if (stepStart < 0) stepStart = now
         if (done) return Event.Live(null, -1f, 1, null)
         lastGrid = grid
-        val labs = grid?.cells?.map { it.lab }
-        val cls = labs?.map { model.classify(it) }
-        val colors = cls?.map { it.first }
-        val p = stab.feed(now, colors, labs)
-        if (colors == null || !stab.stable(now) || holdAtStable) return Event.Live(colors, p, tier(now), lastGuard)
-        val center = colors[4]
-        // the centre colour says which face this is (user addendum: centres never move, standard scheme)
-        val face = Inference.faceOf(center) ?: return Event.Live(colors, p, tier(now), lastGuard)
-        if (reads.containsKey(face) || (only != null && face != only)) {
+        // User 2026-11-17: the face being read is the one we asked for ("show the <colour>-centre side"), so its
+        // centre colour is known — never trust the camera's centre colour. The measured centre is that colour in this
+        // light: the other eight squares are read against it.
+        val face = expectedFace
+        val centre = Cube.SCHEME.getValue(face)
+        val seen = grid?.cells?.map { it.lab }
+        // only a centre that could be this colour teaches it (red / orange look alike on the headset; a colour whose
+        // side is already read cannot be a new centre, so the camera got it wrong). A centre clearly of another unread
+        // side means that side is shown: read it plainly and do not take it.
+        val plain = seen?.let { model.classify(it[4]).first }
+        val plausible = plain != null && (plain == centre || plain == partner(centre) || Inference.faceOf(plain)?.let { it in reads } == true)
+        if (plausible && lastGuard == Guard.WRONG_SIDE) lastGuard = null
+        val cls = seen?.let { l -> val m = if (plausible) model.withCentreAs(l[4], centre) else model; l.map { m.classify(it) } }
+        val shown = cls?.map { it.first }?.toMutableList()?.also { it[4] = centre }
+        // a face still turning (not square to the camera) is shown but never taken (user 2026-11-17)
+        val square = grid != null && GridFinder.squareOn(grid)
+        val colors = if (square) shown else null
+        val labs = if (square) seen else null
+        val p = stab.feed(now, colors, labs, grid?.cells?.get(4)?.x ?: 0f, grid?.cells?.get(4)?.y ?: 0f, grid?.pitch ?: 1f)
+        if (colors == null || !stab.stable(now) || holdAtStable) return Event.Live(shown, p, tier(now), lastGuard)
+        val mean = stab.meanLabs()
+        // the same side shown again: its nine measured colours match a side already read (names are not compared:
+        // they depend on which centre they were read against)
+        if (reads.values.any { r -> r.face != face && r.labs != null && (0 until 9).sumOf { k -> mean[k].dist(r.labs[k]).toDouble() } / 9 < REPEAT_DIST }) {
             lastGuard = Guard.REPEAT
             return Event.Live(colors, p, tier(now), Guard.REPEAT)
         }
-        val mean = stab.meanLabs()
-        val final = mean.map { model.classify(it) }
-        val read = FaceRead(face, final.map { it.first }.toMutableList().also { it[4] = center }, mean, final.map { it.second })
-        model.calibrate(center, mean[4])
+        if (!plausible) {
+            lastGuard = Guard.WRONG_SIDE
+            return Event.Live(colors, p, tier(now), Guard.WRONG_SIDE)
+        }
+        val fm = model.withCentreAs(mean[4], centre)
+        val final = mean.map { fm.classify(it) }
+        val got = final.map { it.first }.toMutableList().also { it[4] = centre }
+        val read = FaceRead(face, got, mean, final.map { it.second }.toMutableList().also { it[4] = 1f })
         reads[face] = read
         lastGuard = null
         advance(now)
         return Event.Confirmed(read, null, done)
     }
+
+    /**
+     * The user changed the centre at the per-face confirm (they showed another side than the one asked for): the read
+     * moves to that face. False when that face is already read.
+     */
+    fun moveTo(from: Int, to: Int, read: FaceRead): Boolean {
+        if (to != from && reads.containsKey(to)) return false
+        reads.remove(from)
+        reads[to] = read.copy(face = to)
+        return true
+    }
+
+    private fun partner(c: CubeColor): CubeColor =
+        when (c) {
+            CubeColor.RED -> CubeColor.ORANGE
+            CubeColor.ORANGE -> CubeColor.RED
+            else -> c
+        }
 
     private fun advance(now: Long) {
         stab.reset()
@@ -174,5 +234,8 @@ class ScanSession(private val readFaces: IntArray, val only: Int? = null, val mo
     companion object {
         const val TIER2_MS = 4000L
         const val TIER3_MS = 30000L
+
+        /** Mean Lab distance (L weighted) of the nine squares below which a side is the same side shown again. */
+        const val REPEAT_DIST = 10.0
     }
 }

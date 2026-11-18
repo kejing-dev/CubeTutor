@@ -182,6 +182,7 @@ class CubeScene {
     var displayed: Cube = Cube.solved()
         private set
     private var spin: Anim.Spin? = null
+    private var pauseUntil = 0L
     private var spinStart = 0L
     private var lastTurn: Turn? = null
     private var lastTurnAt = 0L
@@ -540,10 +541,19 @@ class CubeScene {
             displayed = CtController.readCube
             return
         }
+        if (spin == null && now < pauseUntil) {
+            CtController.animating = true
+            return
+        }
         if (spin == null) {
             while (true) {
                 val a = CtController.anims.removeFirstOrNull() ?: break
                 when (a) {
+                    is Anim.Pause -> {
+                        pauseUntil = now + a.ms
+                        CtController.animating = true
+                        return
+                    }
                     is Anim.Snap -> {
                         displayed = a.cube
                         CtLog.i("ANIM snap ${a.why}")
@@ -821,22 +831,27 @@ class CubeScene {
         return if (zh) "「$names」$kind" else "$names $kind"
     }
 
-    // ---- ghost layer: the layer to turn, copied in 35 % white, pulled out 4 cm along its axis, turning in a loop
+    // ---- ghost layer: the layer to turn, copied in 12 % white (user 2026-11-18: 35 % hid the colours), pulled out 4 cm along its axis, turning in a loop
 
     private fun stepGhost(ui: CtUiState, now: Long) {
         val inLesson = ui.tab == Tab.LEARN && ui.lesson != null
         val step = if (inLesson) ui.lesson?.step else null
         val cueOk = inLesson && ui.lessonCue != null && spin == null && CtController.anims.isEmpty()
-        val turn = step?.let { Moves.token(it.move).first() }
+        val tokens = step?.let { Moves.token(it.move) }
+        val turn = ui.lesson?.halfTurn ?: tokens?.first()
         if (!cueOk || turn == null || turn.whole || turn.layers.size != 1) {
             ghosts.forEach { it.on(false) }
             return
         }
+        // a half turn not started yet turns the full 180° (slower), then holds: it must not look like a quarter turn
+        val quarters = if (ui.lesson?.halfTurn == null && tokens != null && tokens.size == 2) 2 else 1
+        val turnMs = if (quarters == 2) GHOST_HALF_MS else GHOST_TURN_MS
+        val loopMs = if (quarters == 2) GHOST_HALF_LOOP_MS else GHOST_LOOP_MS
         val layer = turn.layers.first()
         val axis = when (turn.axis) { Axis.X -> Vec3(1f, 0f, 0f); Axis.Y -> Vec3(0f, 1f, 0f); Axis.Z -> Vec3(0f, 0f, 1f) }
         val out = axis * (0.04f * layer)
-        val phase = ((now % GHOST_LOOP_MS).toFloat() / GHOST_TURN_MS).coerceIn(0f, 1f)
-        val q = turnRot(turn, 0.5f - 0.5f * cos(PI.toFloat() * phase))
+        val phase = ((now % loopMs).toFloat() / turnMs).coerceIn(0f, 1f)
+        val q = turnRot(turn, quarters * (0.5f - 0.5f * cos(PI.toFloat() * phase)))
         var n = 0
         for ((key, home) in cubieHome) {
             if (!inLayer(key, turn)) continue
@@ -1013,7 +1028,7 @@ class CubeScene {
         lines += "INSTANCE cubies=${cubies.size} mesh=roundedBox(0.0653, r 6 mm, ${kit?.cubieTris} tris) material=PBR opaque"
         lines += "INSTANCE stickers=${stickers.count { it != null }} tile=$TILE m opaque PBR, collider ${TILE}x${TILE}x0.006 + Interactable + HoverEffect (reading: only the active face)"
         lines += "INSTANCE handles=${handlePlates.size} slab 0.05x0.05x0.006 + label, collider ${HANDLE_HIT}x${HANDLE_HIT}x0.02"
-        lines += "INSTANCE bar=1 arrows=2 (collider 0.08) tray=1 (collider 0.32x0.07) ghosts=${ghosts.size} (35% white, no collider) ray=system (app ray off since v0.1.2)"
+        lines += "INSTANCE bar=1 arrows=2 (collider 0.08) tray=1 (collider 0.32x0.07) ghosts=${ghosts.size} (12% white, no collider) ray=system (app ray off since v0.1.2)"
         lines.forEach { CtLog.i(it) }
         return lines
     }
@@ -1054,6 +1069,10 @@ class CubeScene {
         const val CELEBRATE_MS = 2000L
         const val GHOST_LOOP_MS = 1800L
         const val GHOST_TURN_MS = 1200f
+
+        /** Half turn: 180° in 1.8 s, then 1.2 s still on the turned layer. */
+        const val GHOST_HALF_MS = 1800f
+        const val GHOST_HALF_LOOP_MS = 3000L
         const val RAY_MAX = 3f
         const val RAY_IDLE = 1.5f
         const val RAY_W = 0.003f
@@ -1148,7 +1167,7 @@ internal class Kit(private val sh: SharedResources) {
     val suspect = m.unlit(CtColors.Suspect)
     val amber = m.unlit(CtColors.Interaction)
     val flash = m.unlit(Color.White)
-    val ghost = m.sheer(Color.White, 0.35f)
+    val ghost = m.sheer(Color.White, 0.12f) // user 2026-11-18: 0.35 hid the colours of the layer behind
     val outlineWhite = m.unlit(CtColors.HighlightRim)
     val outlineGreen = m.unlit(CtColors.Passable)
     val outlineAmber = m.unlit(CtColors.Interaction)

@@ -64,7 +64,8 @@
     <string name="step_of">第 %1$d/%2$d 下</string>
     <string name="turned_it">转好了</string>
     <string name="show_again">再演示一遍</string>
-    <string name="why">看为什么</string>
+    <string name="why">慢放演示</string>
+    <string name="why_move">这一下：%1$s</string>
     <string name="virtual_line">点亮着的把手，再推摇杆（或点魔方下面的箭头）。</string>
     <string name="help_turn">帮我转</string>
     <string name="learn_hint">点把手选层 · 摇杆推方向转</string>
@@ -178,6 +179,15 @@
     <string name="frame_far">离近一点</string>
     <string name="frame_tilt">摆正一点</string>
     <string name="frame_hold">别动，在认…</string>
+    <string name="frame_turning">转正，正对着你再停一下</string>
+    <string name="frame_check">读到了，在窗口里确认</string>
+    <string name="face_ok_title">读到的这一面，对吗？</string>
+    <string name="face_ok_tap">不对的格子点一下就能改（这里或魔方上）。</string>
+    <string name="face_ok_amber">%d 格拿不准（琥珀色框），看一眼。</string>
+    <string name="face_ok_yes">对，下一面</string>
+    <string name="scan_wrong_side">这不是%1$s中心那面，换%1$s中心那面对过来</string>
+    <string name="face_ok_centre">中心是%s：这是我们让你拿的那面。拿错了面，点中心改。</string>
+    <string name="fix_centre_hint">改中心 = 这其实是另一面，整面会挪过去。</string>
     <string name="frame_none">框里还没看到魔方</string>
     <string name="confirm_title">是这样吗？</string>
     <string name="confirm_inferred">斜纹的 %d 格是推出来的，没扫。</string>

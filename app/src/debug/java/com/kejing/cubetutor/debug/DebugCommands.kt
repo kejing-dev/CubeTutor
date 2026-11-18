@@ -99,8 +99,10 @@ object DebugCommands {
                 "scanimg" -> inject(context, listOf(v), args)
                 "scanset" -> inject(context, (1..6).map { "$v/face$it.png" }, args)
                 "scanfake" -> { ScanBridge.fake = if (v == "0") null else v; if (ScanBridge.injector == null) inject(context, listOf("scan/setA/face1.png"), args) }
-                "scanoff" -> { ScanBridge.injector = null; ScanBridge.fake = null; ScanBridge.holdStable = false; ScanBridge.forceFail = false; ScanBridge.forceDeny = false; CtController.debugHoldGot = false }
+                "scanoff" -> { ScanBridge.injector = null; ScanBridge.fake = null; ScanBridge.holdStable = false; ScanBridge.forceFail = false; ScanBridge.forceDeny = false; CtController.debugHoldGot = false; CtController.debugAutoOk = false }
                 "scanhold" -> CtController.debugHoldGot = v != "0"
+                "faceok" -> when (v) { "auto" -> CtController.debugAutoOk = true; "0" -> CtController.debugAutoOk = false; else -> ev(Ui.FaceOk) }
+                "facerescan" -> ev(Ui.FaceRescan)
                 "scanpause" -> ScanBridge.holdStable = v != "0"
                 "loadamber" -> { ev(Ui.ReadMine); CtController.debugLoadAmber(com.kejing.cubetutor.domain.Cube.solved().apply(com.kejing.cubetutor.domain.Scrambler.make(20, (args["seed"] ?: "5").toLong()).joinToString(" ")).code(), v.toInt()) }
                 "camerafail" -> ScanBridge.forceFail = v != "0"

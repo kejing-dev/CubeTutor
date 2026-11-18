@@ -26,9 +26,10 @@ c "coachok=1" 2;                             shot S01
 c "scanoff=1 scanimg=scan/setA/face1.png scanpause=1" 1; c "read=1" 5;   ahead S02; shot S02-rig
 c "tier=2" 3;                                ahead S02-tier2
 c "tier=3" 3;                                ahead S02-tier3
-c "scanpause=0 scanhold=1" 4;                ahead S03; shot S03-rig
-c "scanhold=0 fromstart=1" 7;                ahead S02-repeat
-c "scanset=scan/setA hold=1" 1; c "fromstart=1" 22; shot S08-confirm
+c "scanpause=0 scanhold=1" 4;                ahead S03; shot S03-rig; shot S03-confirm
+c "tap=sticker:F2" 2;                       shot S03-fix; c "fixcancel=1" 1
+c "scanhold=0 faceok=1" 7;                  ahead S02-repeat
+c "scanset=scan/setA hold=1 faceok=auto" 1; c "fromstart=1" 22; shot S08-confirm
 c "tap=sticker:F1" 3;                        shot S06-confirm-edit
 c "tap=sticker:F5 fix=W" 3;                  shot S06-centre-clash
 c "fixcancel=1 confirm=1" 5;                 shot S08-scanned
@@ -38,7 +39,7 @@ c "scanhold=0" 1; c "fromstart=1" 4;         c "face=2 fill=4" 3; shot S04-face2
 c "face=5" 3;                                shot S04-face5
 c "scanoff=1 loadamber=2" 4;                 shot S08-amber
 c "amberfix=1" 3;                            shot S06-review
-c "scanset=scan/setBad hold=1" 1; c "fromstart=1" 22; shot S08-confirm-bad
+c "scanset=scan/setBad hold=1 faceok=auto" 1; c "fromstart=1" 22; shot S08-confirm-bad
 c "confirm=1" 4;                             shot S07-scanned
 c "scanoff=1 bad=count" 3;                   shot S07-count
 c "tap=sticker:F2" 3;                        shot S06

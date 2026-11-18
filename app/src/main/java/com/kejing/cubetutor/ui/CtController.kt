@@ -72,6 +72,10 @@ sealed class Ui {
     object ReviewDone : Ui()
     object ConfirmRead : Ui()
 
+    /** S03 per-face confirm (user 2026-11-17): 对，下一面 / 重扫这一面. */
+    object FaceOk : Ui()
+    object FaceRescan : Ui()
+
     // the cube (handles, stick, the bar's arrows, B)
     data class TapHandle(val handle: Handle, val src: String) : Ui()
     data class PushStick(val push: Push, val src: String) : Ui()
@@ -111,6 +115,9 @@ sealed class Ui {
 sealed class Anim {
     data class Spin(val turn: Turn, val ms: Long, val whole: Boolean) : Anim()
     data class Snap(val cube: Cube, val why: String) : Anim()
+
+    /** Hold still (user 2026-11-18: a half turn is shown as one 180° turn, then a pause, so it is not taken for a quarter). */
+    data class Pause(val ms: Long) : Anim()
 }
 
 /**
@@ -225,13 +232,17 @@ object CtController {
             Ui.FaceDone -> faceDone()
             is Ui.GoFace -> s.read?.let { r -> val n = e.face.coerceIn(1, 6); set("face $n") { it.copy(read = r.copy(face = n, target = Lessons.readFaces[n - 1], failure = null, fixing = null)) } }
             Ui.ReconcileDone -> checkRead()
+            Ui.FaceOk -> confirmFace()
+            Ui.FaceRescan -> rescanCurrent()
             Ui.ReadFaceAgain -> s.read?.let { r ->
+                if (r.mode == ReadMode.FACE_OK) return rescanCurrent()
                 val f = r.failure?.suspects?.firstOrNull()?.let { Facelets.faceOf(it) } ?: r.target
                 rescanFace(f)
             }
             Ui.ReadFromStart -> startRead(false, force = true)
             is Ui.FixColor -> s.read?.let { r ->
                 val i = r.fixing ?: return
+                if (r.mode == ReadMode.FACE_OK && i % 9 == 4) return moveFace(r, e.color)
                 // a centre defines its face: it may not become another centre's colour (user addendum)
                 if (i % 9 == 4 && (0 until 6).any { f -> f != i / 9 && readCube.centerColor(f) == e.color }) {
                     soundOrNull?.nudge()
@@ -430,36 +441,101 @@ object CtController {
             }
             is ScanSession.Event.Confirmed -> {
                 val fr = e.read
-                faceReads[fr.face] = fr
+                val changed = listOf(fr)
                 var c = readCube
-                for (k in 0 until 9) c = c.with(fr.face * 9 + k, fr.colors[k])
+                for (x in changed) {
+                    faceReads[x.face] = x
+                    for (k in 0 until 9) c = c.with(x.face * 9 + k, x.colors[k])
+                }
                 readCube = c
                 soundOrNull?.scanGot()
-                val amber = r.amber + fr.amber.map { fr.face * 9 + it }
+                val touched = changed.map { it.face }.toSet()
+                val amber = (r.amber.filter { it / 9 !in touched } + changed.flatMap { x -> x.amber.map { x.face * 9 + it } }).toSet()
                 CtLog.i("SCAN got ${Facelets.FACES[fr.face]} ${fr.colors.joinToString("") { it.code.toString() }} amber=${fr.amber} guard=${e.guard} done=${e.done}")
-                val inf = inferFromReads()
-                CtLog.i("INFER after ${faceReads.size} faces: $inf")
-                val (ask, cands) = when (inf) {
-                    is Inference.Result.Unique -> null to 1
-                    is Inference.Result.Ambiguous -> inf.askFace to inf.count
-                    else -> null to 0
-                }
-                ScanBridge.session?.wanted = ask
-                pendingInference = inf
-                set("scanGot ${Facelets.FACES[fr.face]}") { it.copy(read = r.copy(target = fr.face, live = fr.colors, progress = 1f, gotAt = now(), guard = e.guard, scanned = faceReads.keys.toSet(), amber = amber, tier = 1, askFace = ask, candidates = cands)) }
-                // S03 for 1 s: the card turns green, then the next face (reference sample: pause so faces do not cross-read)
-                if (debugHoldGot) {
-                    ScanBridge.pause(Long.MAX_VALUE / 4)
-                    set("scanHold") { st -> st.copy(read = st.read?.copy(gotAt = Long.MAX_VALUE / 2)) }
-                    return
-                }
-                ScanBridge.pause(1000L)
+                // S03 (user 2026-11-17): stop and show the face; the user confirms or fixes it before the next one
+                ScanBridge.pause(Long.MAX_VALUE / 4)
                 scanTimer?.let { main.removeCallbacks(it) }
-                val t = Runnable { afterGot(e.done) }
-                scanTimer = t
-                main.postDelayed(t, 1000L)
+                set("scanGot ${Facelets.FACES[fr.face]}") { it.copy(read = r.copy(mode = ReadMode.FACE_OK, target = fr.face, live = fr.colors, progress = 1f, gotAt = now(), guard = e.guard, scanned = faceReads.keys.toSet(), amber = amber, tier = 1, fixing = null)) }
+                if (debugAutoOk) main.postDelayed({ if (_state.value.read?.mode == ReadMode.FACE_OK) confirmFace() }, 600L)
             }
         }
+    }
+
+    /** S03 对，下一面: the face as shown (with the user's fixes) is kept; then inference and the next face. */
+    private fun confirmFace() {
+        val r = _state.value.read ?: return
+        if (r.mode != ReadMode.FACE_OK) return
+        val f = r.target
+        val old = faceReads[f] ?: return
+        val colors = (0 until 9).map { readCube[f * 9 + it] }
+        val fr = FaceRead(f, colors, old.labs, colors.indices.map { k -> if (colors[k] != old.colors[k]) 1f else old.conf[k] })
+        faceReads[f] = fr
+        val s = ScanBridge.session
+        s?.confirmed(fr)
+        CtLog.i("SCAN ok ${Facelets.FACES[f]} ${colors.joinToString("") { it.code.toString() }} fixed=${colors.indices.count { colors[it] != old.colors[it] }}")
+        val inf = inferFromReads()
+        CtLog.i("INFER after ${faceReads.size} faces: $inf")
+        val (ask, cands) = when (inf) {
+            is Inference.Result.Unique -> null to 1
+            is Inference.Result.Ambiguous -> inf.askFace to inf.count
+            else -> null to 0
+        }
+        s?.wanted = ask
+        pendingInference = inf
+        // the user looked at every square of this face: none of them is "unsure" any more
+        set("faceOk ${Facelets.FACES[f]}") { it.copy(read = r.copy(mode = ReadMode.SCAN, amber = r.amber.filter { it / 9 != f }.toSet(), askFace = ask, candidates = cands, fixing = null, centreClash = false)) }
+        // a short pause so the face just confirmed is not read again while the cube is turned to the next one
+        ScanBridge.pause(800L)
+        afterGot(s?.done ?: true)
+    }
+
+    /**
+     * S03 / S06 on the centre (user 2026-11-17): "I showed another side": the face just read becomes the side whose
+     * centre is [color] — if that side is not read yet (else the centre-clash line).
+     */
+    private fun moveFace(r: ReadState, color: CubeColor) {
+        val from = r.target
+        val to = Inference.faceOf(color) ?: return
+        if (to == from) {
+            set("fixCentreSame") { it.copy(read = r.copy(fixing = null, centreClash = false)) }
+            return
+        }
+        val old = faceReads[from] ?: return
+        val s = ScanBridge.session
+        if (faceReads.containsKey(to) || s?.moveTo(from, to, old) == false) {
+            soundOrNull?.nudge()
+            set("centreClash") { it.copy(read = r.copy(centreClash = true)) }
+            return
+        }
+        val colors = (0 until 9).map { k -> if (k == 4) color else readCube[from * 9 + k] }
+        faceReads.remove(from)
+        faceReads[to] = old.copy(face = to, colors = colors)
+        var c = readCube
+        for (k in 0 until 9) {
+            c = c.with(to * 9 + k, colors[k])
+            if (k != 4) c = c.with(from * 9 + k, CubeColor.NONE)
+        }
+        readCube = c
+        soundOrNull?.select()
+        CtLog.i("SCAN moved ${Facelets.FACES[from]} -> ${Facelets.FACES[to]} (centre set to $color)")
+        val amber = r.amber.filter { it / 9 != from && it / 9 != to }.toSet() + r.amber.filter { it / 9 == from }.map { to * 9 + it % 9 }
+        set("faceMoved ${Facelets.FACES[to]}") { it.copy(read = r.copy(target = to, fixing = null, centreClash = false, scanned = faceReads.keys.toSet(), amber = amber, face = Lessons.readFaces.indexOf(to) + 1)) }
+    }
+
+    /** S03 重扫这一面: forget the face just read and read it again with the same session. */
+    private fun rescanCurrent() {
+        val r = _state.value.read ?: return
+        if (r.mode != ReadMode.FACE_OK) return
+        val f = r.target
+        faceReads.remove(f)
+        var c = readCube
+        for (k in 0 until 9) if (k != 4) c = c.with(f * 9 + k, CubeColor.NONE)
+        readCube = c
+        val now = android.os.SystemClock.elapsedRealtime()
+        ScanBridge.session?.forget(f, now)
+        CtLog.i("SCAN rescan ${Facelets.FACES[f]}")
+        set("faceRescan ${Facelets.FACES[f]}") { it.copy(read = r.copy(mode = ReadMode.SCAN, target = f, live = null, progress = -1f, guard = null, tier = 1, fixing = null, centreClash = false, scanned = faceReads.keys.toSet(), amber = r.amber.filter { it / 9 != f }.toSet())) }
+        ScanBridge.pause(600L)
     }
 
     private fun afterGot(done: Boolean) {
@@ -568,6 +644,12 @@ object CtController {
         val s = _state.value
         val r = s.read ?: return CtLog.i("TAP sticker ${Facelets.name(i)} ignored (not reading)")
         if (s.tab != Tab.HOME) return
+        if (r.mode == ReadMode.FACE_OK) {
+            // S03 confirm: only the face just read can be changed
+            if (i / 9 != r.target) return CtLog.i("TAP sticker ${Facelets.name(i)} ignored (confirming ${Facelets.FACES[r.target]})")
+            set("fixAsk ${Facelets.name(i)}") { it.copy(read = r.copy(fixing = i)) }
+            return
+        }
         if (r.failure != null || r.mode == ReadMode.REVIEW || r.mode == ReadMode.CONFIRM) {
             // S07 / S08 [去改] -> S06: tap a sticker to change it
             set("fixAsk ${Facelets.name(i)}") { it.copy(read = r.copy(fixing = i)) }
@@ -780,12 +862,20 @@ object CtController {
                 val t0 = SystemClock.elapsedRealtime()
                 val (stage, steps, skipped) =
                     withContext(Dispatchers.Default) {
-                        var kk = k
+                        // plan from where the cube really is: an earlier stage not finished is planned first
+                        val open = Solver.firstOpenStage(cube)
+                        var kk = minOf(k, open)
+                        if (kk < k) CtLog.w("PLAN asked L$k but L$kk is not done: planning L$kk")
                         val sk = ArrayList<Int>()
                         var st: List<Solver.Step> = emptyList()
                         while (kk <= 7) {
-                            st = runCatching { Solver.stage(cube, kk) }.getOrElse { e -> CtLog.w("PLAN L$kk failed: $e"); emptyList() }
-                            if (st.isNotEmpty()) break
+                            st = runCatching { Solver.stage(cube, kk) }.getOrElse { e ->
+                                CtLog.w("PLAN L$kk failed: $e")
+                                // never skip a stage because its plan failed: plan the first open one instead
+                                val f = Solver.firstOpenStage(cube)
+                                if (f != kk && f <= 7) { kk = f; runCatching { Solver.stage(cube, f) }.getOrElse { emptyList() } } else emptyList()
+                            }
+                            if (st.isNotEmpty() || Solver.firstOpenStage(cube) <= kk) break
                             sk += kk
                             kk++
                         }
@@ -794,7 +884,10 @@ object CtController {
                 val ms = SystemClock.elapsedRealtime() - t0
                 CtLog.i("PLAN L$stage steps=${steps.size} skipped=$skipped ms=$ms moves=${steps.joinToString(" ") { it.move }}")
                 if (_state.value.cube != cube) CtLog.w("PLAN cube changed while planning")
-                if (stage > 7 || steps.isEmpty()) {
+                if (steps.isEmpty() && !cube.isSolved) {
+                    CtLog.w("PLAN no steps for an unsolved cube: ${cube.code()}")
+                    setLesson("plan failed") { it.copy(computing = false, offScript = OffScript(null, "?")) }
+                } else if (stage > 7 || steps.isEmpty()) {
                     setLesson("solved") { it.copy(computing = false, solved = true, stage = 7, skipped = skipped) }
                     soundOrNull?.solved()
                 } else {
@@ -807,8 +900,16 @@ object CtController {
     private fun advance(why: String) {
         val l = _state.value.lesson ?: return
         val next = l.idx + 1
+        if (next >= l.steps.size && !Solver.stageDone(_state.value.cube, l.stage)) {
+            // the steps ran out but the cube does not show the stage done (user 2026-11-18: "差一步没完成就说完成了"):
+            // plan the rest of this stage from the cube as it is, never claim it done
+            CtLog.w("STAGE L${l.stage} steps done but stage not done: replanning cube=${_state.value.cube.code()}")
+            setLesson("step end, not done $why") { it.copy(turns = it.turns + 1, undoMove = null) }
+            startStage(l.stage, recomputed = true)
+            return
+        }
         if (next >= l.steps.size) {
-            val solved = l.stage >= 7 || _state.value.cube.isSolved
+            val solved = _state.value.cube.isSolved
             setLesson("stage end L${l.stage} $why") { it.copy(idx = next, halfTurn = null, correctAt = now(), stageDone = !solved, solved = solved, turns = it.turns + 1, undoMove = null) }
             if (solved) soundOrNull?.solved() else soundOrNull?.stageDone()
             CtLog.i("STAGE done L${l.stage} solved=$solved")
@@ -838,8 +939,11 @@ object CtController {
         if (busy()) return
         val step = l.step ?: return
         val q = Moves.token(step.move)
-        for (t in q) anims.addLast(Anim.Spin(t, TURN_MS * 2, t.whole))
-        for (t in q.reversed()) anims.addLast(Anim.Spin(t.inverse, TURN_MS * 2, t.whole))
+        // a half turn: both quarters as one smooth 180°, a pause on the turned cube, then back
+        val per = if (q.size == 2) HALF_MS else TURN_MS * 2
+        for (t in q) anims.addLast(Anim.Spin(t, per, t.whole))
+        anims.addLast(Anim.Pause(if (q.size == 2) 700L else 350L))
+        for (t in q.reversed()) anims.addLast(Anim.Spin(t.inverse, per, t.whole))
         CtLog.i("DEMO again ${step.move}")
     }
 
@@ -998,6 +1102,9 @@ object CtController {
 
     /** Debug: S03 stays up (screenshots) instead of moving on after 1 s. */
     var debugHoldGot = false
+
+    /** Debug (emulator picture sets / tours): confirm each face 0.6 s after it was read. */
+    var debugAutoOk = false
 
     /** Debug: restart the reader on whatever source is configured now (injected pictures / camera). */
     fun debugRescan() {

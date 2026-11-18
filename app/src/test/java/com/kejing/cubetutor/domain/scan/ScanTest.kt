@@ -88,6 +88,8 @@ class ScanTest {
                     total++
                     if (want[k] == got[k]) right++
                 }
+                // the per-face confirm (user 2026-11-17): the user fixes the face, the colours are learnt
+                s.confirmed(e.read.copy(colors = want.toList()))
                 t = t2 + 1000
             }
             assertTrue(s.done)
@@ -197,16 +199,19 @@ class ScanTest {
     }
 
     @Test
-    fun anyOrderByCentreColour() {
-        // faces shown out of the read order are taken as the face their centre says (user addendum)
+    fun theFaceAskedForKeepsItsKnownCentre() {
+        // user 2026-11-17: the side read is the side asked for; its centre is that side's colour, whatever the camera
+        // made of the centre square
         val s = ScanSession(Lessons.readFaces)
-        var t = 0L
-        for (n in listOf(5, 3, 1)) {
-            val (e, t2) = feed(s, frame(File(root, "setC/face$n.png")), t)
-            assertNotNull(e)
-            assertEquals(Lessons.readFaces[n - 1], e!!.read.face)
-            t = t2 + 1000
-        }
+        val asked = s.expectedFace
+        val (e, _) = feed(s, frame(File(root, "setC/face1.png")), 0L)
+        assertNotNull(e)
+        assertEquals(asked, e!!.read.face)
+        assertEquals(Cube.SCHEME.getValue(asked), e.read.colors[4])
+        // the user says it was another side: it moves there (only to a side not read yet)
+        val other = Lessons.readFaces.first { it != asked }
+        assertTrue(s.moveTo(asked, other, e.read))
+        assertTrue(s.reads.containsKey(other) && !s.reads.containsKey(asked))
     }
 
     @Test

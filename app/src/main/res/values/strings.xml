@@ -64,7 +64,8 @@
     <string name="step_of">Move %1$d/%2$d</string>
     <string name="turned_it">Done</string>
     <string name="show_again">Show again</string>
-    <string name="why">Why?</string>
+    <string name="why">Slow demo</string>
+    <string name="why_move">This move: %1$s</string>
     <string name="virtual_line">Tap the glowing handle, then push the stick (or tap the arrow under the cube).</string>
     <string name="help_turn">Do it for me</string>
     <string name="learn_hint">Tap a handle to pick · push the stick to turn</string>
@@ -178,6 +179,15 @@
     <string name="frame_far">Come closer</string>
     <string name="frame_tilt">Hold it straight</string>
     <string name="frame_hold">Hold still…</string>
+    <string name="frame_turning">Turn it square to you, then hold still</string>
+    <string name="frame_check">Got it. Check it in the window</string>
+    <string name="face_ok_title">Is this side right?</string>
+    <string name="face_ok_tap">Tap a wrong square to change it (here or on the cube).</string>
+    <string name="face_ok_amber">%d unsure (amber outline). Have a look.</string>
+    <string name="face_ok_yes">Right, next side</string>
+    <string name="scan_wrong_side">That\'s not the %1$s-centre side. Show the %1$s-centre side</string>
+    <string name="face_ok_centre">Centre: %s, the side we asked for. Showed another side? Tap the centre.</string>
+    <string name="fix_centre_hint">Changing the centre = this is another side; the whole side moves there.</string>
     <string name="frame_none">No cube in the frame yet</string>
     <string name="confirm_title">Is this your cube?</string>
     <string name="confirm_inferred">%d striped squares were worked out, not scanned.</string>

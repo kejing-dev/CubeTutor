@@ -146,6 +146,148 @@ object Lessons {
     fun reason(key: String): T = reasons[key] ?: T("", "")
 
     /**
+     * A group of moves the lesson does together (user 2026-11-17: say why in the lesson itself, especially the few
+     * moves around the current one: what pattern they form and why each small move is there). [moves] = the principle
+     * of each move in the group (null for single-move groups), [purpose] = what the whole group does and why the solved
+     * part survives it.
+     */
+    data class Group(val name: T, val notation: String?, val purpose: T, val moves: List<T>?)
+
+    private fun t(zh: String, en: String) = T(zh, en)
+
+    val groups: Map<String, Group> =
+        mapOf(
+            "DAISY" to Group(
+                t("先搭小雏菊", "First, the daisy"), null,
+                t("四条白边先都翻到顶上，围着黄中心、白色朝上。在顶上它们互不妨碍，后面再一条一条往下送。", "Bring all four white edges up around the yellow center, white facing up. Up there they don't get in each other's way; later each one goes down."),
+                null,
+            ),
+            "DOWN" to Group(
+                t("把一条白边送下去", "Send one white edge down"), null,
+                t("先转顶面，让这条白边的侧面颜色对上前面的中心；再把前面转半圈，它就带着对好的颜色翻到底面，成为十字的一臂。", "Turn the top until the edge's side color meets the front center, then a front half turn flips it down with that color still matching: one arm of the cross."),
+                null,
+            ),
+            "U" to Group(
+                t("只转顶面：对准位置", "Only the top turns: line up"), null,
+                t("公式都在固定的位置做（右前 / 前面），所以先转顶面把要处理的块送过去。只转顶面，底下已经拼好的两层不受影响。", "Every formula works at a fixed spot (front right / front), so the top turns first to bring the piece there. Only the top moves; the finished layers below stay put."),
+                null,
+            ),
+            "Y" to Group(
+                t("整只转：换一面朝你", "Turn the whole cube: another side faces you"), null,
+                t("整只魔方转一下，魔方本身没变，只是让要处理的槽转到右前——公式都在右前做。", "The whole cube turns; nothing on it changes. It just brings the slot you need to front right, where the formulas work."),
+                null,
+            ),
+            "SEXY" to Group(
+                t("右手小公式", "The right-hand move"), "R U R' U'",
+                t("抬起槽 → 新角对到槽口 → 放下 → 顶面回正。右面上去又下来、顶面左去又右回，所以白十字原样，变的只有右前下那个角。一遍不一定白色朝下：每做一遍它会拧一下，重复 1–5 遍就正。", "Lift the slot, bring the new corner over it, put it down, turn the top back. Right goes up and down, top goes left and back, so the cross stays; only the front-right bottom corner changes. Each round twists it once; 1–5 rounds and white faces down."),
+                listOf(
+                    t("右面往上：底层右前的角槽抬上来；顶上右前的那个新角被推到右后。", "Right up: the bottom front-right slot comes up; the new corner on top is pushed to the back right."),
+                    t("顶面往左：新角从右后转回右前，正好在槽口上方；抬上来的旧角被让到左前。", "Top left: the new corner swings back to front right, right over the slot; the old corner moves aside to front left."),
+                    t("右面往下：右面放回，新角跟着落进槽里；十字那条白边也回到原位。", "Right down: the right side goes back and takes the new corner into the slot; the cross edge is home again."),
+                    t("顶面往右：顶面转回去。整组下来只换了槽里那个角。", "Top right: the top turns back. The whole round only changed the corner in the slot."),
+                ),
+            ),
+            "RB" to Group(
+                t("右边腰带公式", "Right belt formula"), "U R U' R' · U' F' U F",
+                t("8 下分两半。前 4 下：把右前的白角抬出来，在顶上和要放的那条棱配成一对；后 4 下：用前面把这一对一起放进中层右前。白面最后原样，中层多了一条对的棱。", "Two halves. First four: lift the white corner out of the front-right slot and pair it with the edge on top. Last four: use the front side to drop the pair in together. The white face ends as it was, plus one middle edge done."),
+                listOf(
+                    t("顶面往左：棱先让开，免得被右面带走。", "Top left: the edge steps aside so the right turn won't take it."),
+                    t("右面往上：右前的槽（中层棱位 + 白角）抬到顶上。", "Right up: the front-right slot (middle edge spot + white corner) comes up."),
+                    t("顶面往右：棱回到前面；抬上来的白角被转到右后。", "Top right: the edge is back at the front; the white corner moves to the back right."),
+                    t("右面往下：右面放回；白角留在顶上右前，正好挨着前面那条棱——配成一对。", "Right down: the right side goes back; the white corner stays on top at front right, right next to the edge: a pair."),
+                    t("顶面往右：这一对挪到右边，把前面让出来。", "Top right: the pair moves to the right and frees the front."),
+                    t("前面逆时针：前面翻上来，空着的槽升到顶上前面。", "Front counter-clockwise: the front flips up and the empty slot rises to the top front."),
+                    t("顶面往左：配好的一对转回前面，正好在空槽上方。", "Top left: the pair comes back to the front, right above the empty slot."),
+                    t("前面顺时针：这一对一起落进中层右前，白角回到底层。", "Front clockwise: the pair drops into the middle together; the white corner is back at the bottom."),
+                ),
+            ),
+            "LB" to Group(
+                t("左边腰带公式（右边的照镜子）", "Left belt formula (the right one in a mirror)"), "U' L' U L · U F U' F'",
+                t("和右边腰带一样分两半，只是左右对调：前 4 下把左前的白角抬出来和棱配对，后 4 下用前面把这一对一起放进中层左前。", "Same two halves as the right belt, mirrored: lift the front-left white corner and pair it with the edge, then use the front side to drop the pair into the middle on the left."),
+                listOf(
+                    t("顶面往右：棱先让开，免得被左面带走。", "Top right: the edge steps aside so the left turn won't take it."),
+                    t("左面往上：左前的槽（中层棱位 + 白角）抬到顶上。", "Left up: the front-left slot (middle edge spot + white corner) comes up."),
+                    t("顶面往左：棱回到前面；白角被转到左后。", "Top left: the edge is back at the front; the white corner moves to the back left."),
+                    t("左面往下：左面放回；白角留在顶上左前，挨着前面那条棱——配成一对。", "Left down: the left side goes back; the white corner stays on top at front left, next to the edge: a pair."),
+                    t("顶面往左：这一对挪到左边，把前面让出来。", "Top left: the pair moves to the left and frees the front."),
+                    t("前面顺时针：前面翻上来，空着的槽升到顶上前面。", "Front clockwise: the front flips up and the empty slot rises to the top front."),
+                    t("顶面往右：配好的一对转回前面，在空槽上方。", "Top right: the pair comes back to the front, above the empty slot."),
+                    t("前面逆时针：这一对一起落进中层左前，白角回到底层。", "Front counter-clockwise: the pair drops in together; the white corner is back at the bottom."),
+                ),
+            ),
+            "YC" to Group(
+                t("黄十字公式：前面夹着右手小公式", "Yellow cross: the right-hand move inside a front turn"), "F · R U R' U' · F'",
+                t("F 先把前面这一层\u201c借\u201d过来，中间做右手小公式，F' 再还回去——所以底下两层原样，只有顶面变。顶面黄色按 点 → L 形 → 一字 → 十字 一遍进一步：L 形摆在左后（黄在后面和左边），一字横着放。", "F borrows the front layer, the right-hand move works on it, F' gives it back, so the two bottom layers survive and only the top changes. The yellow goes dot → L → line → cross, one step per round: the L at back left, the line left to right."),
+                listOf(
+                    t("前面顺时针：先借——顶层前面那条边被带进右边那一列。", "Front clockwise: borrow. The top front edge moves into the right column."),
+                    t("右面往上（右手小公式第 1 下）：右边那列抬上来。", "Right up (right-hand move, 1): the right column comes up."),
+                    t("顶面往左（第 2 下）：顶层的块换个位置。", "Top left (2): the top pieces shift."),
+                    t("右面往下（第 3 下）：右边那列放回。", "Right down (3): the right column goes back."),
+                    t("顶面往右（第 4 下）：顶面转回来。", "Top right (4): the top turns back."),
+                    t("前面逆时针：还回去，底下两层复原，顶面多了黄色。", "Front counter-clockwise: give it back. The bottom two layers are whole again; more yellow on top."),
+                ),
+            ),
+            "SWAP" to Group(
+                t("换边公式（小鱼公式 + 转一下顶面）", "Edge swap (the fish formula + one top turn)"), "R U R' U R U2 R' · U",
+                t("R…R' 把右边一列抬起又放回，中间只转顶面，让顶层的块换座位；所以做完底下两层全回原样，顶层前面和左边两条棱换了位置。先转顶面把已经对的两条放到后面和右边，它们就不会被换走。顶层的角会被挪动或拧，没关系，后两课专门摆角。", "R … R' lifts the right column and puts it back while only the top turns, so the top pieces trade seats and the bottom comes back. Front and left top edges swap, so put the two good ones at the back and right first. Corners may move; stages 6–7 fix them."),
+                listOf(
+                    t("右面往上：右边一列抬到顶上，跟着顶面一起转。", "Right up: the right column comes up to ride with the top."),
+                    t("顶面往左：只转顶层，顶层的块挪座位。", "Top left: only the top turns; the top pieces shift seats."),
+                    t("右面往下：放回去，底下又是完整的。", "Right down: back down; the bottom is whole again."),
+                    t("顶面往左：顶层再挪一格。", "Top left: the top shifts once more."),
+                    t("右面往上：再抬一次。", "Right up: lift again."),
+                    t("顶面转半圈：顶层挪两格。", "Top half turn: the top shifts two seats."),
+                    t("右面往下：放回去——底下两层回原样。", "Right down: back down. The bottom two layers are back."),
+                    t("顶面往左：最后对齐，前面和左边两条棱换好了。", "Top left: line up. The front and left edges have swapped."),
+                ),
+            ),
+            "CYCLE" to Group(
+                t("三角轮换公式（A B A\u207b\u00b9 B\u207b\u00b9）", "Three-corner cycle (A B A\u207b\u00b9 B\u207b\u00b9)"), "U R U' · L' · U R' U' · L",
+                t("这是\u201c交换子\u201d：做 A（U R U'）、做 B（L'）、撤销 A（U R' U'）、撤销 B（L）。A 只动右边、B 只动左边，只在顶上几个角相遇，所以其余全还原，三个角各挪一格。右前的角不动——先把在家的角放右前。", "A commutator: do A (U R U'), do B (L'), undo A, undo B. A only touches the right, B only the left; they overlap at a few top corners, so all else returns and three corners move one spot. The front-right corner stays: put a home corner there first."),
+                listOf(
+                    t("A 段：顶面往左。", "A: top left."),
+                    t("A 段：右面往上——右边一个顶角绕下去。", "A: right up. A right top corner swings down."),
+                    t("A 段：顶面往右。A 做完了。", "A: top right. A is done."),
+                    t("B：左面往上——左边那一列换了一个角上来。", "B: left up. The left column brings another corner up."),
+                    t("撤销 A：顶面往左。", "Undo A: top left."),
+                    t("撤销 A：右面往下。", "Undo A: right down."),
+                    t("撤销 A：顶面往右。", "Undo A: top right."),
+                    t("撤销 B：左面往下——其余全回原样，三个角各挪了一格。", "Undo B: left down. Everything else is back; three corners each moved one spot."),
+                ),
+            ),
+            "TWIST" to Group(
+                t("拧角公式", "Corner twist"), "R' D' R D",
+                t("只管右前上这个角：每做两遍它原地拧 1/3 圈，做到黄色朝上（2 或 4 遍）。底下会乱，正常：四个角都拧正时总遍数是 6 的倍数，而这串做 6 遍等于没做，所以底下自己回来。中途只转顶面，别整只转、别换手。", "Only the front-right top corner counts: every 2 rounds twist it 1/3; repeat until yellow is up. The messy bottom is fine: with all four corners right you've done a multiple of 6 rounds, and 6 rounds change nothing. Between corners turn only the top."),
+                listOf(
+                    t("右面往下：把右前上这个角带到底下。", "Right down: the front-right top corner goes down."),
+                    t("底面往左：底层转一格，换个方向。", "Bottom left: the bottom turns one spot."),
+                    t("右面往上：右边一列回到顶上。", "Right up: the right column comes back up."),
+                    t("底面往右：底面转回来。底下暂时乱是正常的。", "Bottom right: the bottom turns back. A messy bottom for now is normal."),
+                ),
+            ),
+        )
+
+    /** The "why" lines of a step: group name, its notation, this move's principle, the whole group's purpose. */
+    data class WhyNow(val name: String, val notation: String?, val pos: Int, val len: Int, val rep: String?, val move: String, val purpose: String)
+
+    fun whyNow(s: Solver.Step, zh: Boolean): WhyNow? {
+        val g = groups[s.group] ?: return null
+        val moveLine =
+            when {
+                s.reason.endsWith(".out") -> if (zh) "这一遍先把卡住的块换出来，下一组再放好。" else "This round takes the stuck piece out first; the next one puts it in."
+                g.moves != null -> g.moves.getOrNull(s.pos)?.of(zh) ?: reason(s.reason).of(zh)
+                else -> reason(s.reason).of(zh).ifEmpty { caption(s.move).of(zh) }
+            }
+        val rep =
+            when {
+                s.reps > 1 -> if (zh) "第 ${s.rep + 1} / ${s.reps} 遍" else "round ${s.rep + 1} of ${s.reps}"
+                s.reps == 0 -> if (zh) "第 ${s.rep + 1} 遍" else "round ${s.rep + 1}"
+                else -> null
+            }
+        return WhyNow(g.name.of(zh), g.notation, s.pos, s.len, rep, moveLine, g.purpose.of(zh))
+    }
+
+    /**
      * The fixed teaching position of a stage (content.demoSetups): solved cube + the stage's demo formula done backwards,
      * so playing the demo forwards ends solved. Pure: same picture every time.
      */

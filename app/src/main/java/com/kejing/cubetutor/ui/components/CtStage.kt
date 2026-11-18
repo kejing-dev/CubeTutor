@@ -131,7 +131,8 @@ private fun StageHint(state: CtUiState, inView: Boolean) {
 private fun ScanCard(state: CtUiState, inView: Boolean) {
     if (!inView) return
     val r = state.read ?: return
-    val got = System.currentTimeMillis() - r.gotAt < 1000L
+    // S03 (user 2026-11-17): the face just read stays shown, green, until it is confirmed in the window
+    val got = r.mode == com.kejing.cubetutor.ui.ReadMode.FACE_OK
     val found = r.live != null
     val frame =
         when {
@@ -143,8 +144,9 @@ private fun ScanCard(state: CtUiState, inView: Boolean) {
     val center = colorName(com.kejing.cubetutor.ui.CtController.readCube.centerColor(r.target))
     val (line, color) =
         when {
-            got -> rs(R.string.scan_got, r.scanned.size) to CtColors.Passable
+            got -> rs(R.string.frame_check) to CtColors.Passable
             r.guard == Guard.REPEAT -> rs(R.string.scan_repeat) to CtColors.WarnInk
+            r.guard == Guard.WRONG_SIDE -> rs(R.string.scan_wrong_side, center) to CtColors.WarnInk
             r.tier >= 3 -> rs(R.string.scan_paint_now_short) to CtColors.WarnInk
             r.tier == 2 -> rs(R.string.scan_face_camera_short) to CtColors.Interaction
             r.askFace != null -> rs(R.string.frame_one_more, center) to CtColors.Interaction
@@ -154,7 +156,7 @@ private fun ScanCard(state: CtUiState, inView: Boolean) {
         when {
             got -> rs(R.string.frame_count, r.scanned.size)
             found && r.quality == com.kejing.cubetutor.domain.scan.GridFinder.Quality.FAR -> rs(R.string.frame_far)
-            found && r.quality == com.kejing.cubetutor.domain.scan.GridFinder.Quality.TILTED -> rs(R.string.frame_tilt)
+            found && r.quality == com.kejing.cubetutor.domain.scan.GridFinder.Quality.TILTED -> rs(R.string.frame_turning)
             found -> rs(R.string.frame_hold)
             else -> Lessons.holdFor(r.target).let { if (zh()) it.zh else it.en } + " · " + rs(R.string.frame_count, r.scanned.size)
         }
@@ -169,7 +171,7 @@ private fun ScanCard(state: CtUiState, inView: Boolean) {
                 for (row in 0 until 3) Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (col in 0 until 3) {
                         val k = row * 3 + col
-                        val c = r.live?.getOrNull(k)
+                        val c = if (got) com.kejing.cubetutor.ui.CtController.readCube[r.target * 9 + k] else r.live?.getOrNull(k)
                         val amber = got && (r.target * 9 + k) in r.amber
                         Box(
                             Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(5.dp))

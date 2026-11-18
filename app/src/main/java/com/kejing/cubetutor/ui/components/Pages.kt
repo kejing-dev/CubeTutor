@@ -354,6 +354,7 @@ private fun ReadPanel(state: CtUiState, onEvent: (Ui) -> Unit) {
             r.fixing != null -> {
                 // S06: 改成：6 colours + 取消 (+ 重扫这一面)
                 Line(rs(R.string.fix_title), "fix_title", CtType.big)
+                if (r.mode == ReadMode.FACE_OK && r.fixing % 9 == 4) Line(rs(R.string.fix_centre_hint), "fix_centre_hint", CtType.body, CtColors.TagInk, 2)
                 // a centre can't take another centre's colour (user addendum): say so right here
                 if (r.centreClash) Card(Modifier.fillMaxWidth(), "centre_clash") { Line(rs(R.string.centre_clash), "centre_clash_line", CtType.body, CtColors.WarnInk, 2) }
                 Palette(null, "fix") { c -> onEvent(Ui.FixColor(c)) }
@@ -388,6 +389,7 @@ private fun ReadPanel(state: CtUiState, onEvent: (Ui) -> Unit) {
                 Key(rs(R.string.tap_colors_now), "cam_paint", R.drawable.ic_palette, KeyKind.PRIMARY, SHORT_KEY, Modifier.fillMaxWidth()) { onEvent(Ui.PaintAll) }
             }
             r.mode == ReadMode.CONFIRM -> ConfirmPanel(r, onEvent)
+            r.mode == ReadMode.FACE_OK -> FaceOkPanel(r, onEvent)
             r.mode == ReadMode.REVIEW -> {
                 // S08 [去改] → tap an amber square on the cube (S06)
                 FaceChips(r, r.amber.map { Facelets.faceOf(it) }.toSet(), true, onEvent)
@@ -421,6 +423,7 @@ private fun ReadPanel(state: CtUiState, onEvent: (Ui) -> Unit) {
                     when {
                         got -> rs(R.string.scan_got, r.scanned.size) to CtColors.Passable
                         r.guard == Guard.REPEAT -> rs(R.string.scan_repeat) to CtColors.WarnInk
+                        r.guard == Guard.WRONG_SIDE -> rs(R.string.scan_wrong_side, colorName(target)) to CtColors.WarnInk
                         r.tier >= 3 -> rs(R.string.scan_paint_now) to CtColors.WarnInk
                         r.tier == 2 -> rs(R.string.scan_face_camera) to CtColors.Interaction
                         r.askFace != null -> rs(R.string.frame_one_more, colorName(target)) to CtColors.Interaction
@@ -450,6 +453,42 @@ private fun ReadPanel(state: CtUiState, onEvent: (Ui) -> Unit) {
                 Key(rs(R.string.scan_paint_all), "scan_paint_all", R.drawable.ic_palette, KeyKind.NORMAL, SHORT_KEY, Modifier.fillMaxWidth()) { onEvent(Ui.PaintAll) }
             }
         }
+    }
+}
+
+/**
+ * S03 per-face confirm (user 2026-11-17): the camera stopped on the face it just read. Its nine squares, big and
+ * tappable (amber outline = unsure, e.g. red vs orange); a tap opens S06 for that square. 对，下一面 / 重扫这一面.
+ */
+@Composable
+private fun FaceOkPanel(r: ReadState, onEvent: (Ui) -> Unit) {
+    val f = r.target
+    val unsure = r.amber.count { it / 9 == f }
+    FaceChips(r, emptySet(), false, onEvent)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.probe("face_ok_grid")) {
+            for (row in 0 until 3) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                for (col in 0 until 3) {
+                    val i = f * 9 + row * 3 + col
+                    val amber = i in r.amber
+                    Box(
+                        Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(colorOf(CtController.readCube[i]))
+                            .border(if (amber) 4.dp else 1.dp, if (amber) CtColors.Interaction else CtColors.TagInk.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                            .clickable { onEvent(Ui.TapSticker(i, "window")) },
+                    )
+                }
+            }
+        }
+        Card(Modifier.weight(1f), "face_ok_card") {
+            Line(rs(R.string.face_ok_title), "face_ok_title", CtType.title, CtColors.TagInk, 2)
+            Line(rs(R.string.face_ok_centre, colorName(CtController.readCube[f * 9 + 4])), "face_ok_centre", CtType.body, CtColors.TagInk, 3)
+            if (unsure > 0) Line(rs(R.string.face_ok_amber, unsure), "face_ok_amber", CtType.body, CtColors.WarnInk, 2)
+            Line(if (r.centreClash) rs(R.string.centre_clash) else rs(R.string.face_ok_tap), "face_ok_tap", CtType.label, if (r.centreClash) CtColors.WarnInk else CtColors.TagInk, 3)
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Key(rs(R.string.face_ok_yes), "face_ok_yes", R.drawable.ic_check, KeyKind.PRIMARY, SHORT_KEY, Modifier.weight(1.4f)) { onEvent(Ui.FaceOk) }
+        Key(rs(R.string.rescan_face), "face_ok_rescan", R.drawable.ic_replay, KeyKind.NORMAL, SHORT_KEY, Modifier.weight(1f)) { onEvent(Ui.FaceRescan) }
     }
 }
 
@@ -665,8 +704,7 @@ private fun LessonStep(state: CtUiState, onEvent: (Ui) -> Unit) {
             Line(big, "big_caption", CtType.big, lines = 2, modifier = Modifier.weight(1f))
         }
         state.lessonCue?.let { (h, p) -> Pill(if (l.halfTurn != null) rs(R.string.hint_half) else howTo(h, p), "how_to") }
-        Line(Lessons.reason(step.reason).txt(), "reason", CtType.body, lines = 2)
-        Line(rs(R.string.step_of, l.idx + 1, l.steps.size), "step_of", CtType.label, lines = 1)
+        WhyNowCard(step, rs(R.string.step_of, l.idx + 1, l.steps.size))
         if (l.mode == LessonMode.REAL) {
             Key(rs(R.string.turned_it), "turned_it", R.drawable.ic_check, KeyKind.PRIMARY, 72.dp, Modifier.fillMaxWidth()) { onEvent(Ui.TurnedIt) }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -675,14 +713,57 @@ private fun LessonStep(state: CtUiState, onEvent: (Ui) -> Unit) {
                 Key(rs(R.string.why), "why", R.drawable.ic_help, KeyKind.NORMAL, 64.dp, Modifier.weight(1f)) { onEvent(Ui.Why) }
             }
         } else {
-            Line(rs(R.string.virtual_line), "virtual_line", CtType.label, lines = 2)
+            // the cue pill already says which handle and which way; the why card took the static line's place
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Key(rs(R.string.help_turn), "help_turn", R.drawable.ic_play_arrow, KeyKind.PRIMARY, 64.dp, Modifier.weight(1.2f)) { onEvent(Ui.HelpTurn) }
                 Key(rs(R.string.undo), "undo", R.drawable.ic_undo, KeyKind.NORMAL, 64.dp, Modifier.weight(1f), enabled = state.history.isNotEmpty()) { onEvent(Ui.Undo) }
                 Key(rs(R.string.why), "why", R.drawable.ic_help, KeyKind.NORMAL, 64.dp, Modifier.weight(1f)) { onEvent(Ui.Why) }
             }
         }
-        Line(hintText(state) ?: rs(R.string.learn_hint), "learn_hint", CtType.label, PicoTheme.colorScheme.labelSecondary, 2)
+        hintText(state)?.let { Line(it, "learn_hint", CtType.label, PicoTheme.colorScheme.labelSecondary, 2) }
+    }
+}
+
+/**
+ * The why of this step, always on screen (user 2026-11-17: not behind a button). The group the move belongs to (a
+ * formula or a set-up turn) with this move lit in its notation, what this one move does, and what the whole group
+ * achieves and why the solved part survives it.
+ */
+@Composable
+private fun WhyNowCard(step: com.kejing.cubetutor.domain.Solver.Step, stepOf: String) {
+    val w = Lessons.whyNow(step, zh())
+    Card(Modifier.fillMaxWidth(), "why_now") {
+        if (w == null) {
+            Line(Lessons.reason(step.reason).txt(), "reason", CtType.body, CtColors.TagInk, 2)
+            Line(stepOf, "step_of", CtType.label, CtColors.TagInk, 1)
+            return@Card
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Line(w.name, "why_group", CtType.titleSmall, CtColors.TagInk, 1, Modifier.weight(1f))
+            Line(listOfNotNull(w.rep, stepOf).joinToString(" · "), "step_of", CtType.label, CtColors.TagInk, 1)
+        }
+        if (w.notation != null) {
+            // the formula with this move lit (gold on slate), "·" marks its halves
+            var k = 0
+            val text = androidx.compose.ui.text.buildAnnotatedString {
+                for (p in w.notation.split(" ")) {
+                    if (p == "·") {
+                        append(" · ")
+                        continue
+                    }
+                    if (length > 0 && !toString().endsWith(" ")) append(" ")
+                    if (k == w.pos) { val st = pushStyle(androidx.compose.ui.text.SpanStyle(color = CtColors.Interaction, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, background = Color(0x33FFFFFF))); append(p); pop(st) } else append(p)
+                    k++
+                }
+            }
+            Text(text = text, style = CtType.title, color = CtColors.TagInk, maxLines = 1, modifier = Modifier.probe("why_notation"), onTextLayout = fits("line/why_notation"))
+        }
+        // the big caption above already names the move: keep only its principle ("右面往上：…" → "…")
+        val sep = if (zh()) "：" else ": "
+        val cut = w.move.indexOf(sep)
+        val principle = if (cut in 1..18) w.move.substring(cut + sep.length).replaceFirstChar { it.uppercaseChar() } else w.move
+        Line(rs(R.string.why_move, principle), "why_move", CtType.body, CtColors.Interaction, 2)
+        Line(w.purpose, "why_purpose", CtType.label, CtColors.TagInk, 4)
     }
 }
 

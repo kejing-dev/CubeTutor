@@ -226,13 +226,15 @@ fun <T : Any> Modifier.boardInput(
             var startMs = 0L
             var maxTravel = 0f
             var dragging = false
+            // SDK 6.1.9 dragAmount is a per-event delta: add it up from the press into the total (board-input DragTotal)
+            var accum = Offset3M(0f, 0f, 0f)
             detectSpatialDragGesture(
                 context = context,
                 targetedToEntity = TargetEntity.any(),
                 onDragStart = { _, v ->
                     val (hit, path) = resolveUp(v.targetEntity, currentResolver, config.maxResolveDepth)
                     startHit = hit; startPath = path; startSrc = InputSource.of(v.interactionKind)
-                    startMs = SystemClock.uptimeMillis(); maxTravel = 0f; dragging = false
+                    startMs = SystemClock.uptimeMillis(); maxTravel = 0f; dragging = false; accum = Offset3M(0f, 0f, 0f)
                     log("DRAG press src=${startSrc.label} hit=$hit path=$path")
                 },
                 onDragEnd = {
@@ -254,7 +256,9 @@ fun <T : Any> Modifier.boardInput(
                     dragging = false
                 },
             ) { v ->
-                val d = toMeters(v.dragAmount)
+                val step = toMeters(v.dragAmount)
+                accum = Offset3M(accum.x + step.x, accum.y + step.y, accum.z + step.z)
+                val d = accum
                 if (d.length > maxTravel) maxTravel = d.length
                 val hit = startHit
                 if (!dragging && hit != null && d.length > config.dragStartM) {

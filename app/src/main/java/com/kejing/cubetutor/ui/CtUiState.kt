@@ -39,6 +39,12 @@ enum class ReadMode {
     /** S05: the camera cannot be used (denied / no frames / errors / emulator without pictures); → S04 after 2 s. */
     UNAVAILABLE,
 
+    /**
+     * S03 (user 2026-11-17): a face was taken and the camera waits. The nine colours are shown; tap a wrong square to
+     * change it (S06), then 对，下一面 (the colours teach the colour model) or 重扫这一面.
+     */
+    FACE_OK,
+
     /** S06 entry from S08 [去改]: tap an amber (or any) square on the cube to change it. */
     REVIEW,
 
@@ -204,6 +210,7 @@ data class CtUiState(
                         read?.failure != null -> "S07"
                         read?.mode == ReadMode.REVIEW -> "S06"
                         read?.mode == ReadMode.CONFIRM -> "S08"
+                        read?.mode == ReadMode.FACE_OK -> "S03"
                         read?.mode == ReadMode.UNAVAILABLE -> "S05"
                         read?.mode == ReadMode.PAINT -> "S04"
                         read != null -> if (System.currentTimeMillis() - read.gotAt < 1000L) "S03" else "S02"

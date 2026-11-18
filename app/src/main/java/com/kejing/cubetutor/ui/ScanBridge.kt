@@ -39,7 +39,7 @@ object ScanBridge {
     var forceDeny = false
 
     /** Where the alignment frame is in the camera frame (debug `roi=x,y,w,h`); spike calibrates it. */
-    @Volatile var roi: GridFinder.Roi = GridFinder.Roi.DEFAULT
+    @Volatile var roi: GridFinder.Roi = GridFinder.Roi.FULL
 
     /** Last frame width (the frame UI judges "too far" against the ROI). */
     @Volatile var frameW = 640
@@ -58,6 +58,9 @@ object ScanBridge {
     @Volatile var frames = 0
         private set
 
+    private var appCtx: Context? = null
+    private var dumped = 0
+
     val running: Boolean
         get() = source != null
 
@@ -74,6 +77,7 @@ object ScanBridge {
                     return false
                 } else CameraFrameSource(context.applicationContext)
         val my = ++epoch
+        appCtx = context.applicationContext
         session = s
         source = src
         frames = 0
@@ -100,7 +104,11 @@ object ScanBridge {
                 if (fk != null) FakeGrid.of(fk)
                 else runCatching { GridFinder.find(f, roi) }.onFailure { CtLog.w("SCAN grid failed: $it") }.getOrNull()
             val ms = SystemClock.elapsedRealtime() - t0
-            if (frames <= 3 || frames % 60 == 0) CtLog.i("SCAN frame ${frames} grid=${grid != null} ${ms} ms")
+            if (frames <= 3 || frames % 30 == 0) CtLog.i("SCAN frame ${frames} grid=${grid != null} ${ms} ms ${if (fk == null) GridFinder.lastStats else ""}")
+            // headset tuning: debug builds keep every 20th real camera frame (max 40) for offline GridFinder tuning
+            if (com.kejing.cubetutor.BuildConfig.DEBUG && source is CameraFrameSource && frames % 20 == 0 && dumped < 40) {
+                appCtx?.let { c -> dumped++; runCatching { dump(c, "%03d-grid%s".format(frames, if (grid != null) "1" else "0")) } }
+            }
             main.post {
                 busy = false
                 if (epoch != my) return@post
@@ -159,7 +167,7 @@ internal object FakeGrid {
 
     // the defaults were made from these sRGB values (ColorModel.DEFAULTS); look them up instead of inverting Lab
     private fun labToRgb(lab: com.kejing.cubetutor.domain.scan.Lab): IntArray {
-        val table = listOf(intArrayOf(225, 228, 225), intArrayOf(225, 205, 35), intArrayOf(185, 25, 40), intArrayOf(245, 115, 30), intArrayOf(20, 75, 185), intArrayOf(25, 160, 75))
+        val table = listOf(intArrayOf(202, 207, 220), intArrayOf(220, 206, 8), intArrayOf(220, 70, 10), intArrayOf(220, 120, 8), intArrayOf(88, 131, 220), intArrayOf(138, 220, 145))
         return table.minByOrNull { com.kejing.cubetutor.domain.scan.Lab.ofRgb(it[0], it[1], it[2]).dist(lab) }!!
     }
 }

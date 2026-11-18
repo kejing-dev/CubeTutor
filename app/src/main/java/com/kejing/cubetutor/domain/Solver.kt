@@ -12,8 +12,12 @@ import java.util.PriorityQueue
  * the path is exactly what the lesson text says to do (turn the top until …, then do the formula). Pure Kotlin.
  */
 object Solver {
-    /** One move of the lesson: a notation token ("R", "U2", "y'"), its stage (1..7) and a reason key. */
-    data class Step(val move: String, val stage: Int, val reason: String)
+    /**
+     * One move of the lesson: a notation token ("R", "U2", "y'"), its stage (1..7) and a reason key; and the group it
+     * belongs to (user 2026-11-17: the "why" of the few moves around it, shown with every step): [group] = formula id
+     * (Lessons.groups), [pos] of [len] moves in it, repetition [rep] (0-based) of [reps] (0 = until done).
+     */
+    data class Step(val move: String, val stage: Int, val reason: String, val group: String = "", val pos: Int = 0, val len: Int = 1, val rep: Int = 0, val reps: Int = 1)
 
     // --------------------------------------------------------------------------------------------- predicates
     // all relative to the centres; the lesson keeps white at D (y never moves D)
@@ -161,6 +165,9 @@ object Solver {
     fun stage(cube: Cube, k: Int): List<Step> {
         require(cube.centerColor(3) == CubeColor.WHITE || (0 until 6).none { cube.centerColor(it) == CubeColor.WHITE }) { "white must be at D" }
         if (stageDone(cube, k)) return emptyList()
+        // a stage keeps the ones before it: without them its search can never succeed and runs out of memory (headset
+        // ANR 2026-11-18: stage 2 planned on a cube whose cross was one move short)
+        check(firstOpenStage(cube) >= k) { "stage $k needs stages 1..${k - 1} done (first open ${firstOpenStage(cube)})" }
         return when (k) {
             1 -> cross(cube)
             2 -> pieces(cube, 2, L2_MACROS, 100, { c -> crossDone(c) }, ::bottomCorners)
@@ -201,7 +208,7 @@ object Solver {
                     t.startsWith("U") -> "L1.room"
                     else -> "L1.lift"
                 }
-                out += Step(t, 1, reason)
+                out += Step(t, 1, reason, "DAISY", i, tokens.size)
             }
             c = c.apply(tokens.joinToString(" "))
             check(++guard < 8) { "daisy loop" }
@@ -213,14 +220,15 @@ object Solver {
                 val x = if (u.isEmpty()) c else c.apply(u)
                 x[Legality.edgeFacelets[1][0]] == white && x[Legality.edgeFacelets[1][1]] == front
             }
+            val len = if (turns.isNotEmpty()) 2 else 1
             if (turns.isNotEmpty()) {
-                out += Step(turns, 1, "L1.align")
+                out += Step(turns, 1, "L1.align", "DOWN", 0, len)
                 c = c.apply(turns)
             }
-            out += Step("F2", 1, "L1.down")
+            out += Step("F2", 1, "L1.down", "DOWN", len - 1, len)
             c = c.apply("F2")
             if (k < 3) {
-                out += Step("y", 1, "y.next")
+                out += Step("y", 1, "y.next", "Y", 0, 1)
                 c = c.apply("y")
             }
         }
@@ -237,7 +245,7 @@ object Solver {
             val path = search(c, macros, maxCost) { x -> keep(x) && count(x) > have } ?: error("L$k search failed from ${c.code()}")
             val lastFormula = path.indexOfLast { it.role != "U" && it.role != "y" }
             path.forEachIndexed { i, m ->
-                m.tokens.forEachIndexed { j, t -> out += Step(t, k, reasonFor(k, m, i == lastFormula, j, path, i)) }
+                m.tokens.forEachIndexed { j, t -> out += grouped(Step(t, k, reasonFor(k, m, i == lastFormula, j, path, i)), k, m, j) }
             }
             c = c.apply(path.flatMap { it.tokens }.joinToString(" "))
         }
@@ -248,9 +256,22 @@ object Solver {
         val path = search(start, macros, maxCost, goal = goal) ?: error("L$k search failed from ${start.code()}")
         val lastFormula = path.indexOfLast { it.role == "A" }
         val out = ArrayList<Step>()
-        path.forEachIndexed { i, m -> m.tokens.forEachIndexed { j, t -> out += Step(t, k, reasonFor(k, m, i == lastFormula, j, path, i)) } }
+        path.forEachIndexed { i, m -> m.tokens.forEachIndexed { j, t -> out += grouped(Step(t, k, reasonFor(k, m, i == lastFormula, j, path, i)), k, m, j) } }
         return out
     }
+
+    /** The group of move [j] of macro [m] in stage [k] (Lessons.groups). */
+    private fun grouped(st: Step, k: Int, m: Macro, j: Int): Step =
+        when {
+            m.role == "U" -> st.copy(group = "U", pos = 0, len = 1)
+            m.role == "y" -> st.copy(group = "Y", pos = 0, len = 1)
+            m.role.startsWith("T") -> st.copy(group = "SEXY", pos = j % 4, len = 4, rep = j / 4, reps = m.role.drop(1).toInt())
+            m.role == "RB" || m.role == "LB" -> st.copy(group = m.role, pos = j, len = m.tokens.size)
+            k == 4 -> st.copy(group = "YC", pos = j, len = m.tokens.size)
+            k == 5 -> st.copy(group = "SWAP", pos = j, len = m.tokens.size)
+            k == 6 -> st.copy(group = "CYCLE", pos = j, len = m.tokens.size)
+            else -> st
+        }
 
     private fun reasonFor(k: Int, m: Macro, lastFormula: Boolean, j: Int, path: List<Macro>, i: Int): String =
         when (k) {
@@ -289,17 +310,17 @@ object Solver {
         for (k in 0 until 4) {
             var n = 0
             while (c[urf] != c.centerColor(0)) {
-                for (t in Moves.tokens(TWIST)) out += Step(t, 7, "L7.twist")
+                Moves.tokens(TWIST).forEachIndexed { j, t -> out += Step(t, 7, "L7.twist", "TWIST", j, 4, n, 0) }
                 c = c.apply(TWIST)
                 check(++n <= 6) { "twist loop" }
             }
             if (k < 3) {
-                out += Step("U", 7, "L7.next")
+                out += Step("U", 7, "L7.next", "U", 0, 1)
                 c = c.apply("U")
             }
         }
         val last = listOf("", "U", "U2", "U'").first { u -> (if (u.isEmpty()) c else c.apply(u)).isSolved }
-        if (last.isNotEmpty()) out += Step(last, 7, "L7.last")
+        if (last.isNotEmpty()) out += Step(last, 7, "L7.last", "U", 0, 1)
         return out
     }
 }

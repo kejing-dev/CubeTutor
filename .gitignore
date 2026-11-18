@@ -41,3 +41,6 @@ google-services.json
 .env
 .env.*
 keystore.properties
+
+# headset camera frames show the office (screens, people): local only
+app/src/test/resources/scan-real/

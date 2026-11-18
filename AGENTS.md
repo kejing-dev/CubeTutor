@@ -24,10 +24,12 @@ FrameSource (platform/camera)  CameraFrameSource: SpatialML session 0x0x0 DISABL
                                3 s / 8 s timeouts, 3 errors or 8 s without a non-zero frame = unavailable). Log prefix CAM.
                                InjectedFrameSource: debug pictures at the same rate. Never the camera on the emulator.
 ScanBridge (ui)                one frame in flight -> GridFinder on a worker thread -> ScanSession on main -> CtController
-domain/scan (pure, JVM tests)  GridFinder (find the 3x3 in the middle 80 %, median colours), ColorModel (Lab, 6 refs,
-                               centres calibrate), Stabilizer (same 9 colours 0.6 s), ScanSession (read order, repeat /
-                               reversed guards, tier 2 at 4 s, tier 3 at 30 s), CubeAssembler (balanced 6x9 grouping,
-                               U/D turn fix, amber squares)
+domain/scan (pure, JVM tests)  GridFinder (tiles between dark plastic / seams / colour edges, 3x3 lattice that may put
+                               several points in one merged same-colour region, gray-world white balance + brightest
+                               channel = 220), ColorModel (Lab, 6 headset-measured refs, each face read against its
+                               own centre, confirmed centres calibrate), Stabilizer (same 9 colours 0.6 s), ScanSession
+                               (repeat guard, red/orange swap, tier 2 at 4 s, tier 3 at 30 s), CubeAssembler (balanced
+                               6x9 grouping, U/D turn fix, amber squares)
 ```
 
 User addenda 2026-11-11 (design-package userAddenda): faces are identified by their centre colour (any order; standard
@@ -38,6 +40,17 @@ net in the window, inferred squares striped / slow blink in 3D, unsure amber; ta
 can't take another centre's colour; edits re-run inference) → 对，就是这样 → legality → S08 ready / S07. The camera
 looks only inside the **alignment frame**: a world panel placed every frame 0.33 m ahead, 8° below the line of sight,
 box 160 dp = 5.7 cm (FRAME_K); ROI `GridFinder.Roi.DEFAULT` until the headset spike calibrates it (`roi=x,y,w,h`).
+
+User 2026-11-17 (after the headset test): **per-face confirm** — a face is taken only when held still 0.9 s, square
+to the camera (GridFinder.squareOn) and not moving; then ReadMode.FACE_OK (= S03): the camera pauses, the window
+shows the nine squares big (amber = unsure), tap one to change it (S06), [对，下一面] keeps it (ScanSession.confirmed
+→ ColorModel.learn from all nine) and runs inference, [重扫这一面] forgets it (ScanSession.forget). Debug `faceok=1|auto|0`,
+`facerescan=1`; picture-set tours use `faceok=auto`.
+**The side read is the side asked for** (user 2026-11-17, replaces "any order by centre colour"): its centre = the
+scheme colour, the measured centre only becomes that colour's reference (`ColorModel.withCentreAs`); a centre clearly of
+another unread side → Guard.WRONG_SIDE (not taken); the same side again → Guard.REPEAT by Lab distance of the nine
+squares; changing the centre at S03 moves the read to that side (`CtController.moveFace`, `ScanSession.moveTo`).
+Detection runs on ROI FULL (middle 80 %); a lattice with full-size tiles continuing past an edge is rejected (slid).
 
 Tier ① auto → ② after 4 s the big prompt "face the headset camera" (window + scan card) → ③ after 30 s "tap this side"
 (S04 for that side, then back to the camera); camera denied / failing / emulator → S05 → S04 for the rest, sides already
@@ -137,6 +150,15 @@ S25, S26, S27, S29. Not on the emulator: S00 (0.5 s), S28 (head pitch cannot be 
 (SteadyGate test; `recall=1` runs the path). Synthetic scan pictures: `python3 -I tools/make_scan_sets.py`.
 
 ## Platform facts found here
+
+- Headset camera spike 2026-11-17 (swan, right-eye rectified VST via SpatialML readback): session in 0.15–0.25 s,
+  640 x 480 RGB every ~163 ms; fails with `SSMR backend exception` / system `open camera fail -99` while the headset
+  is off the head and asleep (camera off) — the app falls to S05 as designed. A cube held at the alignment frame is
+  ~70 px wide around (0.45, 0.6) of the frame (inside ROI DEFAULT). Warm dim light: mean ≈ 64, blue reads grey and red
+  reads orange without white balance. The user's cube is **stickerless** (1 px seams): same-colour neighbours merge, so
+  GridFinder accepts merged regions. Real frames + truth: `app/src/test/resources/scan-real/2026-11-17`, RealFrameTest
+  (12 / 14 found, every front view right up to red / orange). Logcat `SCAN frame n grid=… <GridFinder stats>` every
+  30 frames; debug builds dump every 20th camera frame (max 40) to files/scan-dump/.
 
 - v0.1.2: in Full Space the **system** draws the controller ray and delivers the trigger as a tap (board-input). The app
   used to draw its own ray and turn its own trigger into a tap → two rays and one press toggling a handle twice. Now:
