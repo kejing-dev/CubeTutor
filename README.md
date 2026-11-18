@@ -29,13 +29,14 @@ PICO OS 6 · PICO Spatial SDK 6.1.9 · 包名 `com.kejing.cubetutor` · 权限�
 
 ## 截图
 
-截图在模拟器里拍（v0.1.1 界面巡检），不是真实房间；相机读魔方只能在头显上用。
+截图在模拟器里拍（v0.1.3），不是真实房间；模拟器上的相机读入用的是注入的合成图片，真魔方只能在头显上读。
 
 | | |
 |---|---|
-| ![开始](docs/S01.jpg) 开始：读我的魔方 / 虚拟魔方 | ![读好了](docs/S08.jpg) 读好了，和手里那只一模一样 |
-| ![复原课](docs/S09-L2.jpg) 复原课：右面往上，跟着亮的箭头 | ![选层](docs/S10-picked.jpg) 点把手选中一列，推摇杆转 |
-| ![为什么](docs/S13.jpg) 为什么：把白面补满 | ![自由玩](docs/S15-play.jpg) 自由玩：复原了 |
+| ![开始](docs/shot-01.jpg) 开始：读我的魔方 / 虚拟魔方 | ![逐面确认](docs/shot-02.jpg) 逐面确认：九格放大，点格子改颜色 |
+| ![读好了](docs/shot-03.jpg) 读好了，和手里那只一模一样 | ![复原课](docs/shot-04.jpg) 复原课：右面往上，跟着亮的箭头 |
+| ![选层](docs/shot-05.jpg) 点把手选中一列，推摇杆转 | ![为什么](docs/shot-06.jpg) 为什么：这一下属于哪个公式 |
+| ![复原了](docs/shot-07.jpg) 自由玩：复原了 | |
 
 演示视频如有，均为模拟器录屏（非真实手势录像）。
 
@@ -72,7 +73,7 @@ you tap Read my cube) · no network
 - **"Why" card in the lesson**: the formula each move belongs to (this move lit), what this move does and what the
   whole group achieves; half turns preview as one 180° turn.
 
-Screenshots above are from the emulator (v0.1.1 UI tour), not a real room; reading a real cube needs the headset camera.
+Screenshots above are from the emulator (v0.1.3), not a real room; reading a real cube needs the headset camera.
 Any demo video is an emulator screen recording, not real hand gestures.
 
 Developer notes: [AGENTS.md](AGENTS.md).
